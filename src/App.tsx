@@ -110,7 +110,7 @@ function App() {
     // If context filtering is ON, iterate through each active context
     // Default to detectedContext if selection is empty, or just empty if nothing detected
     const contextsToProcess = selectedContexts.length > 0 
-      ? selectedContexts 
+      ? [...selectedContexts].sort((a, b) => contextCategories.indexOf(a) - contextCategories.indexOf(b))
       : (detectedContext ? [detectedContext] : []);
 
     if (contextsToProcess.length === 0) return [];
