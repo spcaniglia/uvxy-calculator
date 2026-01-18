@@ -6,6 +6,7 @@ import { Settings, BarChart3, Info, TrendingDown, TrendingUp, History } from 'lu
 import clsx from 'clsx';
 
 function App() {
+  const [ticker, setTicker] = useState<'UVXY' | 'VXX'>('UVXY');
   const [data, setData] = useState<PricePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,26 +35,29 @@ function App() {
     "Sharp Decline (<-15%)"
   ];
 
-  // Load Data on Mount
+  // Load Data on Mount or Ticker Change
   useEffect(() => {
     const loadData = async () => {
+      setLoading(true);
+      setError(null);
       try {
-        const points = await parseCSV('/data/UVXY_full_history.csv');
+        const points = await parseCSV(`/data/${ticker}_full_history.csv`);
         setData(points);
         if (points.length > 0) {
-          setCurrentPrice(36);
-          setTargetPrice(36);
-          setStopPrice(39);
+          const lastPrice = Math.floor(points[points.length - 1].price);
+          setCurrentPrice(lastPrice);
+          setTargetPrice(lastPrice);
+          setStopPrice(lastPrice + 3);
         }
       } catch (err) {
-        setError('Failed to load historical data.');
+        setError(`Failed to load historical data for ${ticker}.`);
         console.error(err);
       } finally {
         setLoading(false);
       }
     };
     loadData();
-  }, []);
+  }, [ticker]);
 
   // Determine Auto-Detected Context
   const detectedContext: ContextCategory | null = useMemo(() => {
@@ -66,11 +70,7 @@ function App() {
     return getContextCategory(change);
   }, [data, lookbackDays]);
 
-  // Sync selected context with detected context when it changes (only if user hasn't manually selected one yet, or we want to auto-update)
-  // For simplicity: We'll initialize selectedContext with detectedContext when data loads or lookback changes, 
-  // BUT only if the user hasn't explicitly chosen something else? 
-  // Easier approach: Just let the Select default to "detectedContext" if selectedContext is null.
-  // Actually, better UX: When lookback changes, auto-update the selection to match the new reality.
+  // Sync selected context with detected context when it changes
   useEffect(() => {
     if (detectedContext) {
       setSelectedContext(detectedContext);
@@ -110,8 +110,23 @@ function App() {
               <BarChart3 className="w-6 h-6 text-indigo-400" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-100 tracking-tight">UVXY Strategy <span className="text-indigo-400">Analyst</span></h1>
-              <p className="text-xs text-slate-500 font-mono">Historical Probability Calculator</p>
+              <h1 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-3">
+                <div className="relative">
+                  <select 
+                    value={ticker}
+                    onChange={(e) => setTicker(e.target.value as 'UVXY' | 'VXX')}
+                    className="appearance-none bg-slate-800 border border-indigo-500/30 text-indigo-400 font-bold rounded-lg py-1 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer hover:bg-slate-700 transition-colors"
+                  >
+                    <option value="UVXY">UVXY</option>
+                    <option value="VXX">VXX</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-indigo-400">
+                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                  </div>
+                </div>
+                Strategy Analyst
+              </h1>
+              <p className="text-xs text-slate-500 font-mono mt-1">Historical Probability Calculator</p>
             </div>
           </div>
           <button className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-full transition-colors">
