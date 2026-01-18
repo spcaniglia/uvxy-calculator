@@ -118,7 +118,7 @@ export const calculateProbabilities = (
   horizonDays: number,
   filterConfig?: {
     lookbackDays: number;
-    currentContextCategory: ContextCategory;
+    allowedContexts: ContextCategory[];
   }
 ): AnalysisResult => {
   if (data.length === 0) return { horizon: horizonDays, winRate: 0, lossRate: 0, sampleSize: 0 };
@@ -157,7 +157,7 @@ export const calculateProbabilities = (
       const pastReturn = (entryPrice - lookbackPrice) / lookbackPrice;
       const historicalCategory = getContextCategory(pastReturn);
 
-      if (historicalCategory !== filterConfig.currentContextCategory) {
+      if (!filterConfig.allowedContexts.includes(historicalCategory)) {
         continue;
       }
     }
@@ -190,6 +190,6 @@ export const calculateProbabilities = (
     winRate: totalSamples > 0 ? wins / totalSamples : 0,
     lossRate: totalSamples > 0 ? losses / totalSamples : 0,
     sampleSize: totalSamples,
-    contextCategory: filterConfig?.currentContextCategory
+    contextCategory: filterConfig && filterConfig.allowedContexts.length === 1 ? filterConfig.allowedContexts[0] : undefined
   };
 };

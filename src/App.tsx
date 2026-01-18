@@ -21,8 +21,8 @@ function App() {
   const [lookbackDays, setLookbackDays] = useState(10);
   const [useVxFutures] = useState(false);
   
-  // Allow user to override context
-  const [selectedContext, setSelectedContext] = useState<ContextCategory | null>(null);
+  // Allow user to override context (Multi-select)
+  const [selectedContexts, setSelectedContexts] = useState<ContextCategory[]>([]);
 
   // Horizon Selection
   const availableHorizons = [5, 7, 10, 15, 20, 30, 45, 60, 90];
@@ -33,6 +33,14 @@ function App() {
       prev.includes(days) 
         ? prev.filter(h => h !== days)
         : [...prev, days].sort((a, b) => a - b)
+    );
+  };
+
+  const toggleContext = (ctx: ContextCategory) => {
+    setSelectedContexts(prev => 
+      prev.includes(ctx)
+        ? prev.filter(c => c !== ctx)
+        : [...prev, ctx]
     );
   };
 
@@ -83,24 +91,41 @@ function App() {
   // Sync selected context with detected context when it changes
   useEffect(() => {
     if (detectedContext) {
-      setSelectedContext(detectedContext);
+      setSelectedContexts([detectedContext]);
     }
   }, [detectedContext]);
 
-  // Calculate Results
-  const results: AnalysisResult[] = useMemo(() => {
+  // Calculate Results Grouped by Context
+  const resultsGroups = useMemo(() => {
     if (data.length === 0 || currentPrice <= 0) return [];
     
-    const activeContext = selectedContext || detectedContext;
-    const filterConfig = useContext && activeContext ? {
-      lookbackDays,
-      currentContextCategory: activeContext
-    } : undefined;
+    // If context filtering is OFF, show one group "All History"
+    if (!useContext) {
+      const rows = selectedHorizons.map(days => 
+        calculateProbabilities(data, currentPrice, targetPrice, stopPrice, days, undefined)
+      );
+      return [{ title: "All Historical Data", rows }];
+    }
 
-    return selectedHorizons.map(days => 
-      calculateProbabilities(data, currentPrice, targetPrice, stopPrice, days, filterConfig)
-    );
-  }, [data, currentPrice, targetPrice, stopPrice, useContext, lookbackDays, selectedContext, detectedContext, selectedHorizons]);
+    // If context filtering is ON, iterate through each active context
+    // Default to detectedContext if selection is empty, or just empty if nothing detected
+    const contextsToProcess = selectedContexts.length > 0 
+      ? selectedContexts 
+      : (detectedContext ? [detectedContext] : []);
+
+    if (contextsToProcess.length === 0) return [];
+
+    return contextsToProcess.map(ctx => {
+      const rows = selectedHorizons.map(days => 
+        calculateProbabilities(data, currentPrice, targetPrice, stopPrice, days, {
+          lookbackDays,
+          allowedContexts: [ctx] // Filter strictly for this context
+        })
+      );
+      return { title: ctx, rows };
+    });
+
+  }, [data, currentPrice, targetPrice, stopPrice, useContext, lookbackDays, selectedContexts, detectedContext, selectedHorizons]);
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 font-mono">Loading Market Data...</div>;
   if (error) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-rose-500 font-mono">{error}</div>;
@@ -257,18 +282,26 @@ function App() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Market Condition</label>
-                    <select
-                      value={selectedContext || ''}
-                      onChange={(e) => setSelectedContext(e.target.value as ContextCategory)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none"
-                    >
-                      <option value="" disabled>Select Context</option>
-                      {contextCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                    </select>
-                    {detectedContext && detectedContext !== selectedContext && (
-                      <div className="flex justify-between items-center px-1">
-                        <span className="text-[10px] text-slate-500">Auto-Detected: <span className="text-slate-400">{detectedContext}</span></span>
-                        <button onClick={() => setSelectedContext(detectedContext)} className="text-[10px] text-indigo-400 hover:text-indigo-300 underline">Reset</button>
+                    <div className="grid grid-cols-2 gap-2">
+                      {contextCategories.map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => toggleContext(cat)}
+                          className={clsx(
+                            "py-2 px-2 rounded-lg text-[10px] font-mono font-medium border transition-all text-center leading-tight",
+                            selectedContexts.includes(cat)
+                              ? "bg-indigo-500 text-white border-indigo-400 shadow-md shadow-indigo-500/20"
+                              : "bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-600 hover:text-slate-300"
+                          )}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                    {detectedContext && (
+                      <div className="flex justify-between items-center px-1 mt-2">
+                        <span className="text-[10px] text-slate-500">Auto-Detected: <span className="text-slate-400 font-mono">{detectedContext}</span></span>
+                        <button onClick={() => setSelectedContexts([detectedContext])} className="text-[10px] text-indigo-400 hover:text-indigo-300 underline">Reset to Auto</button>
                       </div>
                     )}
                   </div>
@@ -280,7 +313,7 @@ function App() {
               <Info className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-indigo-200/80 leading-relaxed">
                 Analysis based on <span className="font-mono text-indigo-300 font-semibold">{data.length}</span> historical trading days since 2011. 
-                {useContext ? ` Filtering for days matching "${selectedContext || detectedContext}".` : " Probabilities reflect the full historical dataset."}
+                {useContext ? ` Filtering for days matching selected contexts.` : " Probabilities reflect the full historical dataset."}
               </p>
             </div>
           </div>
@@ -293,9 +326,21 @@ function App() {
                 <span className="px-3 py-1 rounded-full bg-rose-500/10 text-rose-400 text-xs font-medium border border-rose-500/20 whitespace-nowrap">Above Stop</span>
               </div>
             </div>
-            <div className="flex flex-col gap-4">
-              {results.map((result) => (
-                <ProbabilityCard key={result.horizon} result={result} />
+            
+            <div className="flex flex-col gap-8">
+              {resultsGroups.map((group, index) => (
+                <div key={index} className="space-y-3">
+                  {useContext && (
+                    <h3 className="text-sm font-bold text-indigo-400 uppercase tracking-widest px-1 border-b border-indigo-500/20 pb-2">
+                      {group.title}
+                    </h3>
+                  )}
+                  <div className="flex flex-col gap-4">
+                    {group.rows.map((result) => (
+                      <ProbabilityCard key={result.horizon} result={result} />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
