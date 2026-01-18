@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { parseCSV, calculateProbabilities, getContextCategory } from './utils/analyze';
 import type { PricePoint, AnalysisResult, ContextCategory } from './utils/analyze';
 import { ProbabilityCard } from './components/ProbabilityCard';
-import { Settings, BarChart3, Info, TrendingDown, TrendingUp, History } from 'lucide-react';
+import { Settings, BarChart3, Info, TrendingDown, TrendingUp, History, Calendar } from 'lucide-react';
 import clsx from 'clsx';
 
 function App() {
@@ -21,11 +21,21 @@ function App() {
   const [lookbackDays, setLookbackDays] = useState(10);
   const [useVxFutures] = useState(false);
   
-  // New: Allow user to override context
+  // Allow user to override context
   const [selectedContext, setSelectedContext] = useState<ContextCategory | null>(null);
 
-  // Constants
-  const horizons = [7, 15, 30, 45, 60];
+  // Horizon Selection
+  const availableHorizons = [5, 7, 10, 15, 20, 30, 45, 60, 90];
+  const [selectedHorizons, setSelectedHorizons] = useState<number[]>([7, 15, 30, 45, 60]);
+
+  const toggleHorizon = (days: number) => {
+    setSelectedHorizons(prev => 
+      prev.includes(days) 
+        ? prev.filter(h => h !== days)
+        : [...prev, days].sort((a, b) => a - b)
+    );
+  };
+
   const contextCategories: ContextCategory[] = [
     "Major Spike (>25%)",
     "Minor Spike (10-25%)",
@@ -81,18 +91,16 @@ function App() {
   const results: AnalysisResult[] = useMemo(() => {
     if (data.length === 0 || currentPrice <= 0) return [];
     
-    // Use selectedContext if available, otherwise detected
     const activeContext = selectedContext || detectedContext;
-
     const filterConfig = useContext && activeContext ? {
       lookbackDays,
       currentContextCategory: activeContext
     } : undefined;
 
-    return horizons.map(days => 
+    return selectedHorizons.map(days => 
       calculateProbabilities(data, currentPrice, targetPrice, stopPrice, days, filterConfig)
     );
-  }, [data, currentPrice, targetPrice, stopPrice, useContext, lookbackDays, selectedContext, detectedContext]);
+  }, [data, currentPrice, targetPrice, stopPrice, useContext, lookbackDays, selectedContext, detectedContext, selectedHorizons]);
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 font-mono">Loading Market Data...</div>;
   if (error) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-rose-500 font-mono">{error}</div>;
@@ -102,7 +110,6 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30">
-      {/* Header */}
       <header className="bg-slate-900/50 backdrop-blur-md border-b border-slate-800 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -138,15 +145,11 @@ function App() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* Left Column: Controls */}
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-slate-900 rounded-2xl shadow-xl border border-slate-800 overflow-hidden">
               <div className="p-6 border-b border-slate-800">
-                <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
-                  Parameters
-                </h2>
+                <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">Parameters</h2>
               </div>
-              
               <div className="p-6 space-y-6">
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Current Price</label>
@@ -160,7 +163,6 @@ function App() {
                     />
                   </div>
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-emerald-400/80 uppercase tracking-wider flex items-center gap-1">
@@ -175,11 +177,8 @@ function App() {
                         className="w-full pl-8 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-emerald-400 focus:ring-2 focus:ring-emerald-500/50 focus:border-transparent outline-none transition-all font-mono font-medium"
                       />
                     </div>
-                    <div className="text-right text-xs font-mono text-emerald-500">
-                      {targetPct.toFixed(1)}%
-                    </div>
+                    <div className="text-right text-xs font-mono text-emerald-500">{targetPct.toFixed(1)}%</div>
                   </div>
-
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-rose-400/80 uppercase tracking-wider flex items-center gap-1">
                       <TrendingUp className="w-3 h-3" /> Stop Loss
@@ -193,92 +192,86 @@ function App() {
                         className="w-full pl-8 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-rose-400 focus:ring-2 focus:ring-rose-500/50 focus:border-transparent outline-none transition-all font-mono font-medium"
                       />
                     </div>
-                     <div className="text-right text-xs font-mono text-rose-500">
-                      +{stopPct.toFixed(1)}%
-                    </div>
+                    <div className="text-right text-xs font-mono text-rose-500">+{stopPct.toFixed(1)}%</div>
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div className="bg-slate-950/50 p-6 border-t border-slate-800 space-y-4">
-                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Historical Context</h3>
-                
-                <div className="space-y-4">
-                  <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-800 bg-slate-900 cursor-pointer group transition-colors hover:border-indigo-500/50">
-                    <input 
-                      type="checkbox" 
-                      checked={useContext}
-                      onChange={(e) => setUseContext(e.target.checked)}
-                      className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-indigo-500 focus:ring-offset-slate-900"
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-sm text-slate-300 font-medium">Past Price Context</span>
-                      <span className="text-xs text-slate-500">Filter by previous market trend</span>
-                    </div>
-                  </label>
-
-                  <div className={clsx("space-y-4 transition-all duration-300", !useContext && "opacity-40 pointer-events-none blur-[1px]")}>
-                    
-                    {/* Lookback Slider */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center px-1">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
-                          <History className="w-3 h-3" /> Lookback Period
-                        </label>
-                        <span className="text-[10px] font-mono text-indigo-400">{lookbackDays} Days</span>
-                      </div>
-                      <input 
-                        type="range" 
-                        min="1" 
-                        max="30" 
-                        value={lookbackDays}
-                        onChange={(e) => setLookbackDays(Number(e.target.value))}
-                        className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                      />
-                    </div>
-
-                    {/* Context Selector */}
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Market Condition</label>
-                      <select
-                        value={selectedContext || ''}
-                        onChange={(e) => setSelectedContext(e.target.value as ContextCategory)}
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none"
-                      >
-                         <option value="" disabled>Select Context</option>
-                         {contextCategories.map(cat => (
-                           <option key={cat} value={cat}>{cat}</option>
-                         ))}
-                      </select>
-                      {detectedContext && detectedContext !== selectedContext && (
-                        <div className="flex justify-between items-center px-1">
-                          <span className="text-[10px] text-slate-500">Auto-Detected: <span className="text-slate-400">{detectedContext}</span></span>
-                          <button 
-                            onClick={() => setSelectedContext(detectedContext)}
-                            className="text-[10px] text-indigo-400 hover:text-indigo-300 underline"
-                          >
-                            Reset
-                          </button>
-                        </div>
+            <div className="bg-slate-900 rounded-2xl shadow-xl border border-slate-800 overflow-hidden">
+              <div className="p-6 border-b border-slate-800">
+                <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-indigo-400" /> Time Horizons
+                </h2>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-3 gap-3">
+                  {availableHorizons.map(days => (
+                    <button 
+                      key={days}
+                      onClick={() => toggleHorizon(days)}
+                      className={clsx(
+                        "py-2 px-3 rounded-lg text-sm font-mono font-medium border transition-all",
+                        selectedHorizons.includes(days) 
+                         ? "bg-indigo-500 text-white border-indigo-400 shadow-md shadow-indigo-500/20"
+                         : "bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-600 hover:text-slate-300"
                       )}
-                    </div>
-
-                  </div>
+                    >
+                      {days}d
+                    </button>
+                  ))}
                 </div>
+              </div>
+            </div>
 
-                <div className="pt-2">
-                  <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-800/50 bg-slate-900/50 cursor-not-allowed opacity-30 group">
-                    <input 
-                      type="checkbox" 
-                      checked={useVxFutures}
-                      disabled
-                      className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-indigo-500 focus:ring-offset-slate-900"
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-sm text-slate-300 font-medium">Term Structure</span>
-                      <span className="text-xs text-slate-500">Include /VX1 & /VX2 premium</span>
+            <div className="bg-slate-900 rounded-2xl shadow-xl border border-slate-800 overflow-hidden">
+              <div className="p-6 border-b border-slate-800">
+                <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">Historical Context</h2>
+              </div>
+              <div className="p-6 space-y-4">
+                <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-800 bg-slate-900 cursor-pointer group transition-colors hover:border-indigo-500/50">
+                  <input 
+                    type="checkbox" 
+                    checked={useContext}
+                    onChange={(e) => setUseContext(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-indigo-500 focus:ring-offset-slate-900"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm text-slate-300 font-medium">Past Price Context</span>
+                    <span className="text-xs text-slate-500">Filter by previous market trend</span>
+                  </div>
+                </label>
+                <div className={clsx("space-y-4 transition-all duration-300", !useContext && "opacity-40 pointer-events-none blur-[1px]")}>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center px-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                        <History className="w-3 h-3" /> Lookback Period
+                      </label>
+                      <span className="text-[10px] font-mono text-indigo-400">{lookbackDays} Days</span>
                     </div>
-                  </label>
+                    <input 
+                      type="range" min="1" max="30" value={lookbackDays}
+                      onChange={(e) => setLookbackDays(Number(e.target.value))}
+                      className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Market Condition</label>
+                    <select
+                      value={selectedContext || ''}
+                      onChange={(e) => setSelectedContext(e.target.value as ContextCategory)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none"
+                    >
+                      <option value="" disabled>Select Context</option>
+                      {contextCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                    {detectedContext && detectedContext !== selectedContext && (
+                      <div className="flex justify-between items-center px-1">
+                        <span className="text-[10px] text-slate-500">Auto-Detected: <span className="text-slate-400">{detectedContext}</span></span>
+                        <button onClick={() => setSelectedContext(detectedContext)} className="text-[10px] text-indigo-400 hover:text-indigo-300 underline">Reset</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -292,7 +285,6 @@ function App() {
             </div>
           </div>
 
-          {/* Right Column: Results */}
           <div className="lg:col-span-8">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-slate-100">Historical Probability</h2>
@@ -301,7 +293,6 @@ function App() {
                 <span className="px-3 py-1 rounded-full bg-rose-500/10 text-rose-400 text-xs font-medium border border-rose-500/20 whitespace-nowrap">Above Stop</span>
               </div>
             </div>
-            
             <div className="flex flex-col gap-4">
               {results.map((result) => (
                 <ProbabilityCard key={result.horizon} result={result} />
