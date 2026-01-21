@@ -33,7 +33,8 @@ interface MatchResult {
 
 export const PathCalculator: React.FC = () => {
     const [history, setHistory] = useState<HistoryRecord[]>([]);
-    const [days, setDays] = useState<DayData[]>([{ id: 1, open: '', high: '', low: '', close: '' }]);
+    const [days, setDays] = useState<DayData[]>([]);
+    const [historyOffset, setHistoryOffset] = useState<number>(0);
     const [matches, setMatches] = useState<MatchResult[]>([]);
     const [tolerance, setTolerance] = useState<number>(0.5); // 0.5 = 50% relative tolerance (loose)
     // const [loading, setLoading] = useState(true);
@@ -44,7 +45,20 @@ export const PathCalculator: React.FC = () => {
             .then(res => res.json())
             .then(data => {
                 setHistory(data);
-                // setLoading(false);
+                // Autopopulate with the most recent day
+                if (data.length > 0) {
+                    const last = data[data.length - 1];
+                    setDays([
+                        {
+                            id: Date.now(),
+                            open: last.open.toString(),
+                            high: last.high.toString(),
+                            low: last.low.toString(),
+                            close: last.close.toString()
+                        }
+                    ]);
+                    setHistoryOffset(1);
+                }
             })
             .catch(err => console.error("Failed to load history", err));
     }, []);
@@ -83,7 +97,11 @@ export const PathCalculator: React.FC = () => {
 
         // Scan history
         // We need enough future data (at least 1 day after the sequence)
-        for (let i = 0; i < history.length - validDays.length; i++) {
+        // AND we must ensure we don't match the actual recent days we are using as input
+        // to avoid "matching against ourselves" and showing 100% win rates.
+        const excludeBuffer = historyOffset + 5; 
+        
+        for (let i = 0; i < history.length - validDays.length - excludeBuffer; i++) {
             let isMatch = true;
             let totalDiff = 0;
 
@@ -92,8 +110,6 @@ export const PathCalculator: React.FC = () => {
                 const dayHist = history[i + j];
 
                 // 1. Match Intraday Move (Body)
-                // Use absolute difference for small numbers, relative for large?
-                // Simple difference in percentage points
                 const diffIntraday = Math.abs(dayInput.intraday_pct - dayHist.intraday_pct);
                 
                 // 2. Match Range (Volatility)
@@ -105,8 +121,7 @@ export const PathCalculator: React.FC = () => {
                     diffGap = Math.abs(dayInput.gap_pct - dayHist.gap_pct);
                 }
 
-                // Thresholds (Hardcoded "Loose" logic for now, refined by tolerance)
-                // Tolerance acts as a multiplier. 1.0 = Default Loose, 0.5 = Tight
+                // Thresholds
                 const t = 5 * (1 + tolerance); 
 
                 if (diffIntraday > t || diffRange > t || diffGap > t) {
@@ -118,12 +133,12 @@ export const PathCalculator: React.FC = () => {
             }
 
             if (isMatch) {
-                // Determine the "Next Day" and future path (3 days)
+                // Determine the "Next Day" and future path
                 const lastDayIndex = i + validDays.length - 1;
                 const nextDayIndex = lastDayIndex + 1;
                 
                 const nextDay = nextDayIndex < history.length ? history[nextDayIndex] : null;
-                const futurePath = history.slice(nextDayIndex, nextDayIndex + 5); // Next 5 days
+                const futurePath = history.slice(nextDayIndex, nextDayIndex + 31); // Next 31 days
 
                 foundMatches.push({
                     date: history[i + validDays.length - 1].date, // The date of the LAST day in sequence
@@ -138,10 +153,25 @@ export const PathCalculator: React.FC = () => {
         foundMatches.sort((a, b) => a.similarity - b.similarity);
         setMatches(foundMatches);
 
-    }, [days, history, tolerance]);
+    }, [days, history, tolerance, historyOffset]);
 
     const addDay = () => {
-        setDays([...days, { id: Date.now(), open: '', high: '', low: '', close: '' }]);
+        if (history.length > historyOffset) {
+            const prevRecord = history[history.length - 1 - historyOffset];
+            const newDay = {
+                id: Date.now(),
+                open: prevRecord.open.toString(),
+                high: prevRecord.high.toString(),
+                low: prevRecord.low.toString(),
+                close: prevRecord.close.toString()
+            };
+            // Prepend to shift existing days down
+            setDays([newDay, ...days]);
+            setHistoryOffset(historyOffset + 1);
+        } else {
+            // Fallback if no more history
+            setDays([{ id: Date.now(), open: '', high: '', low: '', close: '' }, ...days]);
+        }
     };
 
     const removeDay = (index: number) => {
@@ -157,21 +187,33 @@ export const PathCalculator: React.FC = () => {
     };
 
     // --- Statistics Logic ---
-    const nextDayStats = matches.reduce((acc, m) => {
-        if (!m.nextDay) return acc;
-        if (m.nextDay.close_to_close_pct > 0) acc.green++;
-        else acc.red++;
-        acc.returns.push(m.nextDay.close_to_close_pct);
-        return acc;
-    }, { green: 0, red: 0, returns: [] as number[] });
+    const getStatsForHorizon = (horizon: number) => {
+        const validMatches = matches.filter(m => m.futurePath.length >= horizon);
+        if (validMatches.length === 0) return { greenRate: '0.0', avgReturn: '0.00', count: 0 };
 
-    const avgReturn = nextDayStats.returns.length 
-        ? (nextDayStats.returns.reduce((a, b) => a + b, 0) / nextDayStats.returns.length).toFixed(2)
-        : '0.00';
-    
-    const winRate = matches.length > 0 
-        ? ((nextDayStats.green / matches.length) * 100).toFixed(1)
-        : '0.0';
+        let greenCount = 0;
+        let totalReturn = 0;
+
+        validMatches.forEach(m => {
+            const lastDayClose = m.futurePath[0].open / (1 + m.futurePath[0].gap_pct/100);
+            const targetDayClose = m.futurePath[horizon - 1].close;
+            const returnPct = ((targetDayClose - lastDayClose) / lastDayClose) * 100;
+
+            if (returnPct > 0) greenCount++;
+            totalReturn += returnPct;
+        });
+
+        return {
+            greenRate: ((greenCount / validMatches.length) * 100).toFixed(1),
+            avgReturn: (totalReturn / validMatches.length).toFixed(2),
+            count: validMatches.length
+        };
+    };
+
+    const stats1d = getStatsForHorizon(1);
+    const stats7d = getStatsForHorizon(7);
+    const stats14d = getStatsForHorizon(14);
+    const stats30d = getStatsForHorizon(30);
 
     return (
         <div className="w-full max-w-6xl mx-auto p-4 space-y-8">
@@ -284,23 +326,51 @@ export const PathCalculator: React.FC = () => {
                          </div>
                     ) : (
                         <>
-                            {/* Summary Card */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
-                                    <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Matches Found</div>
-                                    <div className="text-3xl font-mono text-white">{matches.length}</div>
-                                </div>
-                                <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
-                                    <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Next Day Green</div>
-                                    <div className={clsx("text-3xl font-mono", parseFloat(winRate) > 50 ? "text-emerald-400" : "text-slate-400")}>
-                                        {winRate}%
+                            {/* Summary Cards */}
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
+                                        <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Matches Found</div>
+                                        <div className="text-3xl font-mono text-white">{matches.length}</div>
+                                    </div>
+                                    <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
+                                        <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Next Day Green</div>
+                                        <div className={clsx("text-3xl font-mono", parseFloat(stats1d.greenRate) > 50 ? "text-emerald-400" : "text-slate-400")}>
+                                            {stats1d.greenRate}%
+                                        </div>
+                                    </div>
+                                    <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
+                                        <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Next Day Avg</div>
+                                        <div className={clsx("text-3xl font-mono", parseFloat(stats1d.avgReturn) > 0 ? "text-emerald-400" : "text-rose-400")}>
+                                            {parseFloat(stats1d.avgReturn) > 0 ? '+' : ''}{stats1d.avgReturn}%
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
-                                    <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Avg Return</div>
-                                    <div className={clsx("text-3xl font-mono", parseFloat(avgReturn) > 0 ? "text-emerald-400" : "text-rose-400")}>
-                                        {parseFloat(avgReturn) > 0 ? '+' : ''}{avgReturn}%
-                                    </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {[
+                                        { label: '7 Days Out', stats: stats7d },
+                                        { label: '14 Days Out', stats: stats14d },
+                                        { label: '30 Days Out', stats: stats30d }
+                                    ].map((item, i) => (
+                                        <div key={i} className="bg-slate-900/50 rounded-xl p-4 border border-slate-800 flex flex-col justify-between">
+                                            <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-2">{item.label}</div>
+                                            <div className="flex justify-between items-end">
+                                                <div>
+                                                    <div className="text-xs text-slate-400 mb-0.5">Green %</div>
+                                                    <div className={clsx("text-xl font-mono", parseFloat(item.stats.greenRate) > 50 ? "text-emerald-400" : "text-slate-300")}>
+                                                        {item.stats.greenRate}%
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-xs text-slate-400 mb-0.5">Avg Ret</div>
+                                                    <div className={clsx("text-xl font-mono", parseFloat(item.stats.avgReturn) > 0 ? "text-emerald-400" : "text-rose-400")}>
+                                                        {parseFloat(item.stats.avgReturn) > 0 ? '+' : ''}{item.stats.avgReturn}%
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 
@@ -323,7 +393,7 @@ export const PathCalculator: React.FC = () => {
 
                                                 {/* The "Future" Path visualization */}
                                                 <div className="flex-1 flex items-center gap-1 overflow-x-auto pb-2 md:pb-0">
-                                                    {match.futurePath.map((day, dIdx) => (
+                                                    {match.futurePath.slice(0, 7).map((day, dIdx) => (
                                                         <div key={dIdx} className="flex flex-col items-center min-w-[60px]">
                                                             <div className={clsx(
                                                                 "h-12 w-2 rounded-full relative",
@@ -346,6 +416,7 @@ export const PathCalculator: React.FC = () => {
                                                             </span>
                                                         </div>
                                                     ))}
+                                                    <div className="text-slate-600 text-[10px] font-mono pl-2">...</div>
                                                 </div>
 
                                             </div>
