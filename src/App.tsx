@@ -3,11 +3,12 @@ import { parseCSV, calculateProbabilities, getContextCategory } from './utils/an
 import type { PricePoint, ContextCategory } from './utils/analyze';
 import { ProbabilityCard } from './components/ProbabilityCard';
 import { PathCalculator } from './components/PathCalculator';
-import { BarChart3, Info, TrendingDown, TrendingUp, History, Calendar, Calculator, GitCommit } from 'lucide-react';
+import { ContangoChart } from './components/ContangoChart';
+import { BarChart3, Info, TrendingDown, TrendingUp, History, Calendar, Calculator, GitCommit, LineChart } from 'lucide-react';
 import clsx from 'clsx';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'prob' | 'path'>('prob');
+  const [activeTab, setActiveTab] = useState<'prob' | 'path' | 'contango'>('prob');
   const [ticker, setTicker] = useState<'UVXY' | 'VXX'>('UVXY');
   const [data, setData] = useState<PricePoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -184,6 +185,15 @@ function App() {
              >
                  <GitCommit className="w-4 h-4" /> Path Analysis
              </button>
+             <button 
+                onClick={() => setActiveTab('contango')}
+                className={clsx(
+                    "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
+                    activeTab === 'contango' ? "bg-indigo-500 text-white shadow-lg" : "text-slate-400 hover:text-slate-200"
+                )}
+             >
+                 <LineChart className="w-4 h-4" /> Contango
+             </button>
           </div>
         </div>
       </header>
@@ -191,6 +201,8 @@ function App() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         {activeTab === 'path' ? (
              <PathCalculator />
+        ) : activeTab === 'contango' ? (
+             <ContangoChart />
         ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               <div className="lg:col-span-4 space-y-6">
