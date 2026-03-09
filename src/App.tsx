@@ -4,11 +4,13 @@ import type { PricePoint, ContextCategory } from './utils/analyze';
 import { ProbabilityCard } from './components/ProbabilityCard';
 import { PathCalculator } from './components/PathCalculator';
 import { ContangoChart } from './components/ContangoChart';
+import { SeasonalCalendar } from './components/SeasonalCalendar';
+import { UpdateDataButton } from './components/UpdateDataButton';
 import { BarChart3, Info, TrendingDown, TrendingUp, History, Calendar, Calculator, GitCommit, LineChart } from 'lucide-react';
 import clsx from 'clsx';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'prob' | 'path' | 'contango'>('prob');
+  const [activeTab, setActiveTab] = useState<'prob' | 'path' | 'contango' | 'seasonal'>('prob');
   const [ticker, setTicker] = useState<'UVXY' | 'VXX'>('UVXY');
   const [data, setData] = useState<PricePoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +30,7 @@ function App() {
   const [selectedContexts, setSelectedContexts] = useState<ContextCategory[]>([]);
 
   // Horizon Selection
-  const availableHorizons = [5, 7, 10, 15, 20, 30, 45, 60, 90];
+  const availableHorizons = [5, 7, 10, 15, 20, 30, 45, 60, 90, 150, 200, 300];
   const [selectedHorizons, setSelectedHorizons] = useState<number[]>([7, 15, 30, 45, 60]);
 
   const toggleHorizon = (days: number) => {
@@ -165,35 +167,47 @@ function App() {
             </div>
           </div>
           
-          {/* Tab Navigation */}
-          <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800">
-             <button 
-                onClick={() => setActiveTab('prob')}
-                className={clsx(
-                    "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
-                    activeTab === 'prob' ? "bg-indigo-500 text-white shadow-lg" : "text-slate-400 hover:text-slate-200"
-                )}
-             >
-                 <Calculator className="w-4 h-4" /> Probability
-             </button>
-             <button 
-                onClick={() => setActiveTab('path')}
-                className={clsx(
-                    "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
-                    activeTab === 'path' ? "bg-indigo-500 text-white shadow-lg" : "text-slate-400 hover:text-slate-200"
-                )}
-             >
-                 <GitCommit className="w-4 h-4" /> Path Analysis
-             </button>
-             <button 
-                onClick={() => setActiveTab('contango')}
-                className={clsx(
-                    "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
-                    activeTab === 'contango' ? "bg-indigo-500 text-white shadow-lg" : "text-slate-400 hover:text-slate-200"
-                )}
-             >
-                 <LineChart className="w-4 h-4" /> Contango
-             </button>
+          {/* Tab Navigation + Data Update */}
+          <div className="flex items-center gap-3">
+            <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800">
+              <button 
+                  onClick={() => setActiveTab('prob')}
+                  className={clsx(
+                      "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
+                      activeTab === 'prob' ? "bg-indigo-500 text-white shadow-lg" : "text-slate-400 hover:text-slate-200"
+                  )}
+              >
+                  <Calculator className="w-4 h-4" /> Probability
+              </button>
+              <button 
+                  onClick={() => setActiveTab('path')}
+                  className={clsx(
+                      "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
+                      activeTab === 'path' ? "bg-indigo-500 text-white shadow-lg" : "text-slate-400 hover:text-slate-200"
+                  )}
+              >
+                  <GitCommit className="w-4 h-4" /> Path Analysis
+              </button>
+              <button 
+                  onClick={() => setActiveTab('contango')}
+                  className={clsx(
+                      "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
+                      activeTab === 'contango' ? "bg-indigo-500 text-white shadow-lg" : "text-slate-400 hover:text-slate-200"
+                  )}
+              >
+                  <LineChart className="w-4 h-4" /> Contango
+              </button>
+              <button 
+                  onClick={() => setActiveTab('seasonal')}
+                  className={clsx(
+                      "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
+                      activeTab === 'seasonal' ? "bg-indigo-500 text-white shadow-lg" : "text-slate-400 hover:text-slate-200"
+                  )}
+              >
+                  <Calendar className="w-4 h-4" /> Seasonal
+              </button>
+            </div>
+            <UpdateDataButton />
           </div>
         </div>
       </header>
@@ -203,6 +217,8 @@ function App() {
              <PathCalculator />
         ) : activeTab === 'contango' ? (
              <ContangoChart />
+        ) : activeTab === 'seasonal' ? (
+             <SeasonalCalendar />
         ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               <div className="lg:col-span-4 space-y-6">
@@ -310,7 +326,7 @@ function App() {
                           <span className="text-[10px] font-mono text-indigo-400">{lookbackDays} Days</span>
                         </div>
                         <input 
-                          type="range" min="1" max="30" value={lookbackDays}
+                          type="range" min="1" max="300" value={lookbackDays}
                           onChange={(e) => setLookbackDays(Number(e.target.value))}
                           className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                         />
