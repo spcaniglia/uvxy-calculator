@@ -138,6 +138,8 @@ function App() {
   const targetPct = currentPrice > 0 ? ((targetPrice - currentPrice) / currentPrice) * 100 : 0;
   const stopPct = currentPrice > 0 ? ((stopPrice - currentPrice) / currentPrice) * 100 : 0;
 
+  const firstYear = data.length > 0 ? data[0].date.getFullYear() : null;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30">
       <header className="bg-slate-900/50 backdrop-blur-md border-b border-slate-800 sticky top-0 z-10">
@@ -214,11 +216,11 @@ function App() {
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         {activeTab === 'path' ? (
-             <PathCalculator />
+             <PathCalculator ticker={ticker} />
         ) : activeTab === 'contango' ? (
-             <ContangoChart />
+             <ContangoChart ticker={ticker} />
         ) : activeTab === 'seasonal' ? (
-             <SeasonalCalendar />
+             <SeasonalCalendar ticker={ticker} />
         ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               <div className="lg:col-span-4 space-y-6">
@@ -363,7 +365,8 @@ function App() {
                 <div className="bg-indigo-500/5 rounded-xl p-4 border border-indigo-500/10 flex gap-3">
                   <Info className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
                   <p className="text-sm text-indigo-200/80 leading-relaxed">
-                    Analysis based on <span className="font-mono text-indigo-300 font-semibold">{data.length}</span> historical trading days since 2011. 
+                    {ticker} analysis based on <span className="font-mono text-indigo-300 font-semibold">{data.length}</span> historical trading days
+                    {firstYear ? ` since ${firstYear}` : ''}. 
                     {useContext ? ` Filtering for days matching selected contexts.` : " Probabilities reflect the full historical dataset."}
                   </p>
                 </div>

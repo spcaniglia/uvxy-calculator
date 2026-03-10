@@ -31,7 +31,11 @@ interface MatchResult {
     futurePath: HistoryRecord[];
 }
 
-export const PathCalculator: React.FC = () => {
+interface PathCalculatorProps {
+    ticker: 'UVXY' | 'VXX';
+}
+
+export const PathCalculator: React.FC<PathCalculatorProps> = ({ ticker }) => {
     const [history, setHistory] = useState<HistoryRecord[]>([]);
     const [days, setDays] = useState<DayData[]>([]);
     const [historyOffset, setHistoryOffset] = useState<number>(0);
@@ -41,9 +45,20 @@ export const PathCalculator: React.FC = () => {
 
     // Load History Data
     useEffect(() => {
-        fetch('/data/uvxy_history.json')
-            .then(res => res.json())
-            .then(data => {
+        setHistory([]);
+        setDays([]);
+        setMatches([]);
+        setHistoryOffset(0);
+
+        const tickerKey = ticker.toLowerCase();
+        fetch(`/data/${tickerKey}_history.json`)
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                return res.json();
+            })
+            .then((data: HistoryRecord[]) => {
                 setHistory(data);
                 // Autopopulate with the most recent day
                 if (data.length > 0) {
@@ -60,8 +75,8 @@ export const PathCalculator: React.FC = () => {
                     setHistoryOffset(1);
                 }
             })
-            .catch(err => console.error("Failed to load history", err));
-    }, []);
+            .catch(err => console.error(`Failed to load ${ticker} history`, err));
+    }, [ticker]);
 
     // Calculate Matches whenever inputs change
     useEffect(() => {
@@ -219,8 +234,8 @@ export const PathCalculator: React.FC = () => {
         <div className="w-full max-w-6xl mx-auto p-4 space-y-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-100">Path Probability Calculator</h2>
-                    <p className="text-slate-400 text-sm">Input daily OHLC to find historical matches.</p>
+                    <h2 className="text-2xl font-bold text-slate-100">{ticker} Path Probability Calculator</h2>
+                    <p className="text-slate-400 text-sm">Input daily OHLC to find historical {ticker} matches.</p>
                 </div>
                 
                  {/* Tolerance Slider */}

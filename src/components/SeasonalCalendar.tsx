@@ -22,6 +22,10 @@ interface SelectedCell {
   cell: SeasonalCell;
 }
 
+interface SeasonalCalendarProps {
+  ticker: 'UVXY' | 'VXX';
+}
+
 const formatDate = (date: Date): string => date.toISOString().slice(0, 10);
 const formatPct = (value: number): string => `${(value * 100).toFixed(2)}%`;
 
@@ -53,7 +57,7 @@ const buildCellStyle = (avgReturn: number | null, maxAbs: number): CSSProperties
   };
 };
 
-export function SeasonalCalendar() {
+export function SeasonalCalendar({ ticker }: SeasonalCalendarProps) {
   const [result, setResult] = useState<SeasonalCalendarResult | null>(null);
   const [selected, setSelected] = useState<SelectedCell | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,7 +68,7 @@ export function SeasonalCalendar() {
       setLoading(true);
       setError(null);
       try {
-        const series = await parseUvxyCloseSeries('/data/UVXY_full_history.csv');
+        const series = await parseUvxyCloseSeries(`/data/${ticker}_full_history.csv`);
         const seasonal = buildSeasonalWeeklyCalendar(series, { lookbackYears: 14 });
         setResult(seasonal);
 
@@ -73,14 +77,14 @@ export function SeasonalCalendar() {
           .find((entry) => entry.cell.sampleSize > 0);
         setSelected(firstPopulated ?? null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to build seasonal calendar');
+        setError(err instanceof Error ? err.message : `Failed to build ${ticker} seasonal calendar`);
       } finally {
         setLoading(false);
       }
     };
 
     void load();
-  }, []);
+  }, [ticker]);
 
   const chartData = useMemo(() => {
     if (!selected) return [];
@@ -114,7 +118,7 @@ export function SeasonalCalendar() {
           <div>
             <h2 className="text-xl font-semibold text-slate-100 flex items-center gap-2">
               <CalendarDays className="w-5 h-5 text-indigo-400" />
-              UVXY Seasonal Weekly Calendar
+              {ticker} Seasonal Weekly Calendar
             </h2>
             <p className="text-sm text-slate-400 mt-2">
               Rolling 7-trading-day returns averaged by month/week bucket (Monday-start calendar weeks).

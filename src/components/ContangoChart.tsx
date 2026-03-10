@@ -21,11 +21,15 @@ interface TermStructureData {
   vx1: number;
   vx2: number;
   contango: number; // (VX2 - VX1) / VX1
-  uvxyChange?: number; // Daily change %
+  assetChange?: number; // Daily change %
   fullHeight: number; // Constant for background bar
 }
 
-export function ContangoChart() {
+interface ContangoChartProps {
+  ticker: 'UVXY' | 'VXX';
+}
+
+export function ContangoChart({ ticker }: ContangoChartProps) {
   const [data, setData] = useState<TermStructureData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,43 +43,43 @@ export function ContangoChart() {
       setLoading(true);
       try {
         // Fetch both files in parallel
-        const [vixResponse, uvxyResponse] = await Promise.all([
+        const [vixResponse, priceResponse] = await Promise.all([
             fetch('/data/vix_term_structure.csv'),
-            fetch('/data/UVXY_full_history.csv')
+            fetch(`/data/${ticker}_full_history.csv`)
         ]);
 
         if (!vixResponse.ok) throw new Error('Failed to fetch VIX data');
-        if (!uvxyResponse.ok) throw new Error('Failed to fetch UVXY data');
+        if (!priceResponse.ok) throw new Error(`Failed to fetch ${ticker} data`);
         
         const vixText = await vixResponse.text();
-        const uvxyText = await uvxyResponse.text();
+        const priceText = await priceResponse.text();
 
-        // Parse UVXY Data first to build a lookup map
-        const uvxyMap = new Map<string, number>(); // dateStr -> closePrice
+        // Parse instrument price data first to build a lookup map
+        const priceMap = new Map<string, number>(); // dateStr -> closePrice
         
-        Papa.parse(uvxyText, {
+        Papa.parse(priceText, {
             skipEmptyLines: true,
             complete: (results) => {
                 const rows = results.data as string[][];
-                // UVXY CSV Structure:
-                // Row 0: Price,Open...
-                // Row 1: Ticker,UVXY...
-                // Row 2: Date,,,,
-                // Row 3+: 2011-10-04, ...
-                
-                // Find "Close" column index.
-                // Usually it's index 4 (Price, Open, High, Low, Close)
-                // Let's assume index 4 based on previous checks. 
-                // Index 0 is Date.
-                
-                for (let i = 3; i < rows.length; i++) {
+                let closeIndex = 4;
+                for (let r = 0; r < Math.min(5, rows.length); r++) {
+                    for (let c = 0; c < rows[r].length; c++) {
+                        if ((rows[r][c] ?? '').trim().toLowerCase() === 'close') {
+                            closeIndex = c;
+                            break;
+                        }
+                    }
+                }
+
+                for (let i = 0; i < rows.length; i++) {
                     const row = rows[i];
-                    if (row.length < 5) continue;
-                    const dateStr = row[0];
-                    const closePrice = parseFloat(row[4]);
+                    if (row.length <= closeIndex) continue;
+                    const dateStr = (row[0] ?? '').trim();
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+                    const closePrice = parseFloat(row[closeIndex]);
                     
                     if (dateStr && !isNaN(closePrice)) {
-                        uvxyMap.set(dateStr, closePrice);
+                        priceMap.set(dateStr, closePrice);
                     }
                 }
             }
@@ -93,7 +97,7 @@ export function ContangoChart() {
                     const d = new Date(row.Date);
                     const dateStr = row.Date;
                     
-                    const uvxyPrice = uvxyMap.get(dateStr);
+                    const assetPrice = priceMap.get(dateStr);
     
                     return {
                       date: d,
@@ -101,22 +105,22 @@ export function ContangoChart() {
                       vx1: row.VX1,
                       vx2: row.VX2,
                       contango: (row.VX2 - row.VX1) / row.VX1,
-                      uvxyPrice: uvxyPrice,
+                      assetPrice: assetPrice,
                       fullHeight: 1
-                    } as TermStructureData & { uvxyPrice?: number };
+                    } as TermStructureData & { assetPrice?: number };
                   });
     
                 // Filter nulls
-                const parsed = rawData.filter((item): item is TermStructureData & { uvxyPrice?: number } => item !== null)
+                const parsed = rawData.filter((item): item is TermStructureData & { assetPrice?: number } => item !== null)
                                       .sort((a, b) => a.date.getTime() - b.date.getTime());
     
-                // Calculate UVXY daily change
+                // Calculate daily change for selected instrument
                 for (let i = 1; i < parsed.length; i++) {
                     const current = parsed[i];
                     const prev = parsed[i-1];
                     
-                    if (current.uvxyPrice !== undefined && prev.uvxyPrice !== undefined) {
-                        current.uvxyChange = (current.uvxyPrice - prev.uvxyPrice) / prev.uvxyPrice;
+                    if (current.assetPrice !== undefined && prev.assetPrice !== undefined) {
+                        current.assetChange = (current.assetPrice - prev.assetPrice) / prev.assetPrice;
                     }
                 }
     
@@ -145,7 +149,7 @@ export function ContangoChart() {
     };
 
     fetchData();
-  }, []);
+  }, [ticker]);
 
   const filteredData = useMemo(() => {
     if (!startDate || !endDate) return data;
@@ -246,15 +250,15 @@ export function ContangoChart() {
               {/* Background Bars */}
               <Bar dataKey="fullHeight" yAxisId="bg" isAnimationActive={false} name="Background" legendType="none">
                 {filteredData.map((entry, index) => {
-                    // Determine color based on UVXY change
+                    // Determine color based on selected instrument's daily change
                     let color = 'transparent';
                     let opacity = 0.1;
-                    if (entry.uvxyChange !== undefined) {
-                        if (entry.uvxyChange > 0) {
+                    if (entry.assetChange !== undefined) {
+                        if (entry.assetChange > 0) {
                             color = '#10b981'; // Emerald 500
                             opacity = 0.2; // More opaque for green
                         }
-                        else if (entry.uvxyChange < 0) {
+                        else if (entry.assetChange < 0) {
                             color = '#f43f5e'; // Rose 500
                             opacity = 0.1;
                         }
@@ -295,11 +299,11 @@ export function ContangoChart() {
                  <ul className="space-y-1 text-xs">
                     <li className="flex items-center gap-2">
                         <span className="w-3 h-3 bg-emerald-500/20 border border-emerald-500/50"></span>
-                        <span><strong>Green Sliver:</strong> UVXY closed <span className="text-emerald-400">HIGHER</span> than previous day.</span>
+                        <span><strong>Green Sliver:</strong> {ticker} closed <span className="text-emerald-400">HIGHER</span> than previous day.</span>
                     </li>
                     <li className="flex items-center gap-2">
                         <span className="w-3 h-3 bg-rose-500/20 border border-rose-500/50"></span>
-                        <span><strong>Red Sliver:</strong> UVXY closed <span className="text-rose-400">LOWER</span> than previous day.</span>
+                        <span><strong>Red Sliver:</strong> {ticker} closed <span className="text-rose-400">LOWER</span> than previous day.</span>
                     </li>
                  </ul>
             </div>
